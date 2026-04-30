@@ -38,7 +38,9 @@ class TrackMetadata:
     musicbrainz_release_id: str | None = None
     musicbrainz_release_group_id: str | None = None
     musicbrainz_artist_id: list[str] = field(default_factory=list)
+    discogs_release_id: str | None = None
     barcode: str | None = None
+    catalog_number: str | None = None
 
 
 @dataclass
@@ -141,6 +143,10 @@ class LookupCandidate:
     musicbrainz_release_id: str | None = None
     musicbrainz_release_group_id: str | None = None
     musicbrainz_artist_id: list[str] = field(default_factory=list)
+    discogs_release_id: str | None = None
+    label: str | None = None
+    barcode: str | None = None
+    catalog_number: str | None = None
     confidence: float = 0.0
     details: dict[str, Any] = field(default_factory=dict)
 

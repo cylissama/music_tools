@@ -23,17 +23,39 @@ class LibraryAlbum:
 class PlaylistState:
     """Application state that the UI reads from and writes to."""
 
+    music_directories: list[Path] = field(default_factory=list)
     root_folder: Path | None = None
     library_base_folder: Path | None = None
     library_albums: list[LibraryAlbum] = field(default_factory=list)
     playlist_tracks: list[str] = field(default_factory=list)
 
+    def set_music_directories(self, folders: list[Path]) -> None:
+        self.music_directories = folders
+
     def set_root_folder(self, folder: Path | None) -> None:
         self.root_folder = folder
+
+    def add_music_directory(self, folder: Path) -> bool:
+        if folder in self.music_directories:
+            return False
+        self.music_directories.append(folder)
+        return True
+
+    def remove_music_directory(self, folder: Path) -> bool:
+        if folder not in self.music_directories:
+            return False
+        self.music_directories.remove(folder)
+        if self.root_folder == folder:
+            self.root_folder = None
+        return True
 
     def set_library(self, albums: list[LibraryAlbum], base_folder: Path) -> None:
         self.library_albums = albums
         self.library_base_folder = base_folder
+
+    def clear_library(self) -> None:
+        self.library_albums.clear()
+        self.library_base_folder = None
 
     def add_tracks_to_playlist(self, tracks: list[str]) -> None:
         self.playlist_tracks.extend(tracks)

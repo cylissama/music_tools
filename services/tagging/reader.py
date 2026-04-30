@@ -68,18 +68,21 @@ def read_canonical_metadata(path: str | Path) -> CanonicalTrack:
         "musicbrainz_trackid",
         "MUSICBRAINZ_TRACKID",
         "TXXX:MusicBrainz Track Id",
+        "----:com.apple.iTunes:MusicBrainz Track Id",
     )
     metadata.musicbrainz_release_id = _first(
         raw_tags,
         "musicbrainz_albumid",
         "MUSICBRAINZ_ALBUMID",
         "TXXX:MusicBrainz Album Id",
+        "----:com.apple.iTunes:MusicBrainz Album Id",
     )
     metadata.musicbrainz_release_group_id = _first(
         raw_tags,
         "musicbrainz_releasegroupid",
         "MUSICBRAINZ_RELEASEGROUPID",
         "TXXX:MusicBrainz Release Group Id",
+        "----:com.apple.iTunes:MusicBrainz Release Group Id",
     )
     metadata.musicbrainz_artist_id = _multi(
         raw_tags,
@@ -87,7 +90,28 @@ def read_canonical_metadata(path: str | Path) -> CanonicalTrack:
         "MUSICBRAINZ_ARTISTID",
         "TXXX:MusicBrainz Artist Id",
     )
-    metadata.barcode = _first(raw_tags, "barcode", "BARCODE", "TXXX:BARCODE")
+    metadata.discogs_release_id = _first(
+        raw_tags,
+        "discogs_release_id",
+        "DISCOGS_RELEASE_ID",
+        "TXXX:Discogs Release Id",
+        "----:com.apple.iTunes:Discogs Release Id",
+    )
+    metadata.barcode = _first(
+        raw_tags,
+        "barcode",
+        "BARCODE",
+        "TXXX:BARCODE",
+        "----:com.apple.iTunes:BARCODE",
+    )
+    metadata.catalog_number = _first(
+        raw_tags,
+        "catalognumber",
+        "catalog_number",
+        "CATALOGNUMBER",
+        "TXXX:Catalog Number",
+        "----:com.apple.iTunes:Catalog Number",
+    )
 
     content.mood = _multi(raw_tags, "mood", "MOOD", "TMOO")
     content.energy = _first(raw_tags, "energy", "ENERGY")
@@ -165,7 +189,10 @@ def _extract_custom_tags(raw_tags: dict[str, list[str]]) -> dict[str, Any]:
         "musicbrainz_albumid",
         "musicbrainz_releasegroupid",
         "musicbrainz_artistid",
+        "discogs_release_id",
         "barcode",
+        "catalognumber",
+        "catalog_number",
         "style",
         "bpm",
         "initialkey",
@@ -200,6 +227,14 @@ def _extract_custom_tags(raw_tags: dict[str, list[str]]) -> dict[str, Any]:
         "TBPM",
         "TKEY",
         "TMOO",
+        "TXXX:Discogs Release Id",
+        "TXXX:Catalog Number",
+        "----:com.apple.iTunes:MusicBrainz Track Id",
+        "----:com.apple.iTunes:MusicBrainz Album Id",
+        "----:com.apple.iTunes:MusicBrainz Release Group Id",
+        "----:com.apple.iTunes:Discogs Release Id",
+        "----:com.apple.iTunes:BARCODE",
+        "----:com.apple.iTunes:Catalog Number",
     }
     return {key: value for key, value in raw_tags.items() if key not in canonical_keys}
 

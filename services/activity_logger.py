@@ -21,6 +21,43 @@ def log_root_selected(folder: Path) -> None:
     log_event("root_selected", folder=folder)
 
 
+def log_music_locations_loaded(location_count: int, selected_folder: Path | None) -> None:
+    log_event(
+        "music_locations_loaded",
+        location_count=location_count,
+        selected_folder=selected_folder,
+    )
+
+
+def log_music_location_added(folder: Path, total_locations: int) -> None:
+    log_event("music_location_added", folder=folder, total_locations=total_locations)
+
+
+def log_music_location_removed(folder: Path, total_locations: int) -> None:
+    log_event("music_location_removed", folder=folder, total_locations=total_locations)
+
+
+def log_music_location_activated(folder: Path) -> None:
+    log_event("music_location_activated", folder=folder)
+
+
+def log_settings_save_failed(operation: str, error: Exception) -> None:
+    logger = logging.getLogger(LOGGER_NAME)
+    logger.exception(
+        "settings_save_failed",
+        extra={
+            "event": "settings_save_failed",
+            "details": _sanitize(
+                {
+                    "operation": operation,
+                    "error": str(error),
+                }
+            ),
+            "session_id": get_session_id(),
+        },
+    )
+
+
 def log_root_selection_cancelled() -> None:
     log_event("root_selection_cancelled")
 
@@ -102,6 +139,73 @@ def log_playlist_saved(name: str, save_path: Path, tracks: list[str]) -> None:
         save_path=save_path,
         track_count=len(tracks),
         tracks=tracks,
+    )
+
+
+def log_tag_preview_started(file_path: str) -> None:
+    log_event("tag_preview_started", file_path=file_path)
+
+
+def log_tag_preview_ready(
+    file_path: str,
+    score: float | None,
+    review_required: bool,
+    best_source: str,
+    change_count: int,
+) -> None:
+    log_event(
+        "tag_preview_ready",
+        file_path=file_path,
+        score=score,
+        review_required=review_required,
+        best_source=best_source,
+        change_count=change_count,
+    )
+
+
+def log_tag_preview_dismissed(file_path: str) -> None:
+    log_event("tag_preview_dismissed", file_path=file_path)
+
+
+def log_tag_preview_failed(file_path: str, error: Exception) -> None:
+    logger = logging.getLogger(LOGGER_NAME)
+    logger.exception(
+        "tag_preview_failed",
+        extra={
+            "event": "tag_preview_failed",
+            "details": _sanitize(
+                {
+                    "file_path": file_path,
+                    "error": str(error),
+                }
+            ),
+            "session_id": get_session_id(),
+        },
+    )
+
+
+def log_tag_apply_started(file_path: str, score: float | None) -> None:
+    log_event("tag_apply_started", file_path=file_path, score=score)
+
+
+def log_tag_apply_succeeded(file_path: str, change_count: int) -> None:
+    log_event("tag_apply_succeeded", file_path=file_path, change_count=change_count)
+
+
+def log_tag_apply_failed(file_path: str, error: Exception) -> None:
+    logger = logging.getLogger(LOGGER_NAME)
+    logger.exception(
+        "tag_apply_failed",
+        extra={
+            "event": "tag_apply_failed",
+            "details": _sanitize(
+                {
+                    "file_path": file_path,
+                    "error": str(error),
+                }
+            ),
+            "session_id": get_session_id(),
+        },
     )
 
 

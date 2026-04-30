@@ -4,11 +4,17 @@ from __future__ import annotations
 
 from copy import deepcopy
 from difflib import SequenceMatcher
+import re
+import unicodedata
 
 from services.tagging.schema import CanonicalTrack, LookupCandidate
 
 AUTO_APPLY_THRESHOLD = 0.90
 REVIEW_THRESHOLD = 0.75
+SOURCE_CONFIDENCE_BONUS = {
+    "acoustid_musicbrainz": 0.08,
+    "acoustid": 0.04,
+}
 
 
 def score_candidate(
@@ -28,7 +34,7 @@ def score_candidate(
     track_number_match = _exact_match(candidate.track_number, track.metadata.track_number or context.get("track_number"))
     directory_context_match = _directory_context_match(candidate, context)
 
-    base_confidence = candidate.confidence
+    base_confidence = min(candidate.confidence + SOURCE_CONFIDENCE_BONUS.get(candidate.source, 0.0), 1.0)
     score = (
         0.40 * base_confidence
         + 0.20 * title_similarity
@@ -79,6 +85,12 @@ def merge_candidate_into_track(track: CanonicalTrack, candidate: LookupCandidate
         metadata.release_date = candidate.release_date
     if candidate.isrc:
         metadata.isrc = candidate.isrc
+    if candidate.label:
+        metadata.label = candidate.label
+    if candidate.barcode:
+        metadata.barcode = candidate.barcode
+    if candidate.catalog_number:
+        metadata.catalog_number = candidate.catalog_number
     if candidate.musicbrainz_recording_id:
         metadata.musicbrainz_recording_id = candidate.musicbrainz_recording_id
     if candidate.musicbrainz_release_id:
@@ -87,6 +99,8 @@ def merge_candidate_into_track(track: CanonicalTrack, candidate: LookupCandidate
         metadata.musicbrainz_release_group_id = candidate.musicbrainz_release_group_id
     if candidate.musicbrainz_artist_id:
         metadata.musicbrainz_artist_id = list(candidate.musicbrainz_artist_id)
+    if candidate.discogs_release_id:
+        metadata.discogs_release_id = candidate.discogs_release_id
 
     merged.workflow.tag_confidence = candidate.confidence
     merged.workflow.last_tagged_at = merged.workflow.last_tagged_at or candidate.details.get("timestamp")
@@ -154,7 +168,15 @@ def parse_filename_context(file_path: str) -> dict[str, object]:
 def _similarity(left: object, right: object) -> float:
     if not left or not right:
         return 0.0
-    return SequenceMatcher(None, str(left).lower(), str(right).lower()).ratio()
+
+    left_text = str(left)
+    right_text = str(right)
+
+    variants = [
+        (_normalize_text(left_text), _normalize_text(right_text)),
+        (_normalize_for_title_match(left_text), _normalize_for_title_match(right_text)),
+    ]
+    return max(SequenceMatcher(None, left_variant, right_variant).ratio() for left_variant, right_variant in variants)
 
 
 def _exact_match(left: object, right: object) -> float:
@@ -184,6 +206,27 @@ def _join(value: object) -> str:
     if isinstance(value, list):
         return "; ".join(str(item) for item in value)
     return str(value or "")
+
+
+def _normalize_text(value: str) -> str:
+    """Normalize casing, unicode, and punctuation for safer similarity scoring."""
+    normalized = unicodedata.normalize("NFKD", value).casefold()
+    normalized = normalized.replace("&", " and ")
+    normalized = normalized.replace("°", " degrees ")
+    normalized = re.sub(r"[\-_:;.,!?/\\]+", " ", normalized)
+    normalized = re.sub(r"[^\w\s]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
+
+
+def _normalize_for_title_match(value: str) -> str:
+    """Add title-specific cleanup such as dropping feature annotations."""
+    normalized = _normalize_text(value)
+    normalized = re.sub(r"\((feat|ft|featuring)\s+[^)]*\)", "", normalized)
+    normalized = re.sub(r"\[(feat|ft|featuring)\s+[^\]]*\]", "", normalized)
+    normalized = re.sub(r"\b(feat|ft|featuring)\b.*$", "", normalized)
+    normalized = re.sub(r"\s+", " ", normalized)
+    return normalized.strip()
 
 
 def _parse_stem_pattern(stem: str) -> dict[str, object]:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from services.tagging.audit_store import TaggingAuditStore
@@ -14,6 +15,7 @@ from services.tagging.conflict_resolution import (
 )
 from services.tagging.diff_report import build_diff_report
 from services.tagging.lookup.acoustid_client import AcoustIdLookupClient
+from services.tagging.lookup.discogs_client import DiscogsLookupClient
 from services.tagging.lookup.musicbrainz_client import MusicBrainzLookupClient
 from services.tagging.normalize import normalize_track_tags
 from services.tagging.reader import read_canonical_metadata
@@ -35,6 +37,7 @@ class TaggingService:
         self.review_queue = ReviewQueueService(self.audit_store)
         self.musicbrainz = MusicBrainzLookupClient()
         self.acoustid = AcoustIdLookupClient(api_key=acoustid_api_key)
+        self.discogs = DiscogsLookupClient(user_token=os.environ.get("DISCOGS_USER_TOKEN"))
 
     def read_track(self, file_path: str | Path) -> CanonicalTrack:
         """Read a file into the canonical schema and normalize descriptive tags."""
@@ -68,8 +71,25 @@ class TaggingService:
         )
         return track.clone(), diff_report, candidates
 
-    def apply_tags(self, proposed_track: CanonicalTrack, *, source: str = "tagging_service") -> DiffReport:
-        """Write a previously prepared proposal to disk."""
+    def preview_tags(self, proposed_track: CanonicalTrack, *, source: str = "tagging_preview") -> DiffReport:
+        """Persist and return a dry-run preview that the user can review before accepting."""
+        return write_canonical_metadata(
+            proposed_track,
+            audit_store=self.audit_store,
+            source=source,
+            dry_run=True,
+        )
+
+    def apply_tags(
+        self,
+        proposed_track: CanonicalTrack,
+        *,
+        preview_report: DiffReport | None = None,
+        confirmed: bool = False,
+        source: str = "tagging_service",
+    ) -> DiffReport:
+        """Write a previously previewed proposal only after explicit confirmation."""
+        self._validate_preview_confirmation(proposed_track, preview_report, confirmed)
         return write_canonical_metadata(
             proposed_track,
             audit_store=self.audit_store,
@@ -79,12 +99,7 @@ class TaggingService:
 
     def dry_run(self, proposed_track: CanonicalTrack, *, source: str = "tagging_service") -> DiffReport:
         """Create and persist a dry-run report without modifying the file."""
-        return write_canonical_metadata(
-            proposed_track,
-            audit_store=self.audit_store,
-            source=source,
-            dry_run=True,
-        )
+        return self.preview_tags(proposed_track, source=source)
 
     def queue_for_review(self, proposed_track: CanonicalTrack, diff_report: DiffReport) -> int:
         """Persist a reviewable proposal for later UI or batch processing."""
@@ -111,6 +126,13 @@ class TaggingService:
             candidates.extend(
                 self.musicbrainz.search_recordings(
                     str(context["title"]),
+                    artist=artist,
+                    album=str(context["album"]) if context.get("album") else None,
+                )
+            )
+            candidates.extend(
+                self.discogs.search_releases(
+                    title=str(context["title"]),
                     artist=artist,
                     album=str(context["album"]) if context.get("album") else None,
                 )
@@ -159,3 +181,19 @@ class TaggingService:
                 enriched.append(match)
 
         return enriched
+
+    def _validate_preview_confirmation(
+        self,
+        proposed_track: CanonicalTrack,
+        preview_report: DiffReport | None,
+        confirmed: bool,
+    ) -> None:
+        """Require an explicit preview-and-confirm step before mutating a file."""
+        if preview_report is None:
+            raise ValueError("A preview report is required before applying tags.")
+
+        if preview_report.file_path != proposed_track.file_path:
+            raise ValueError("The preview report does not match the proposed file.")
+
+        if not confirmed:
+            raise ValueError("Tag application requires explicit confirmation after preview.")

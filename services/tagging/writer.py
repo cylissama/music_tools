@@ -164,7 +164,17 @@ def _write_mp4(mutagen_file, track: CanonicalTrack) -> None:
         "----:com.apple.iTunes:MusicBrainz Release Group Id",
         track.metadata.musicbrainz_release_group_id,
     )
+    _set_mp4_freeform(
+        mutagen_file,
+        "----:com.apple.iTunes:Discogs Release Id",
+        track.metadata.discogs_release_id,
+    )
     _set_mp4_freeform(mutagen_file, "----:com.apple.iTunes:BARCODE", track.metadata.barcode)
+    _set_mp4_freeform(
+        mutagen_file,
+        "----:com.apple.iTunes:Catalog Number",
+        track.metadata.catalog_number,
+    )
     _set_mp4_freeform(
         mutagen_file,
         "----:com.apple.iTunes:MOOD",
@@ -198,6 +208,8 @@ def _write_mp3(mutagen_file, track: CanonicalTrack) -> None:
     _set_id3_txxx(tags, "MusicBrainz Album Id", track.metadata.musicbrainz_release_id)
     _set_id3_txxx(tags, "MusicBrainz Release Group Id", track.metadata.musicbrainz_release_group_id)
     _set_id3_txxx(tags, "MusicBrainz Artist Id", track.metadata.musicbrainz_artist_id)
+    _set_id3_txxx(tags, "Discogs Release Id", track.metadata.discogs_release_id)
+    _set_id3_txxx(tags, "Catalog Number", track.metadata.catalog_number)
     _set_id3_text(tags, TRCK, _pair_value(track.metadata.track_number, track.metadata.track_total))
     _set_id3_text(tags, TPOS, _pair_value(track.metadata.disc_number, track.metadata.disc_total))
 
@@ -264,7 +276,9 @@ def _canonical_field_values(track: CanonicalTrack) -> dict[str, object]:
         "musicbrainz_release_id": track.metadata.musicbrainz_release_id,
         "musicbrainz_release_group_id": track.metadata.musicbrainz_release_group_id,
         "musicbrainz_artist_id": track.metadata.musicbrainz_artist_id,
+        "discogs_release_id": track.metadata.discogs_release_id,
         "barcode": track.metadata.barcode,
+        "catalog_number": track.metadata.catalog_number,
         "bpm": track.content_tags.bpm,
         "key": track.content_tags.key,
         "mood": track.content_tags.mood,

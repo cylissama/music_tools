@@ -50,11 +50,21 @@ def read_canonical_metadata(path: str | Path) -> CanonicalTrack:
     metadata.track_number, metadata.track_total = _split_pair(
         _first(raw_tags, "tracknumber", "TRACKNUMBER", "trkn", "TRCK")
     )
+    if metadata.track_total is None:
+        metadata.track_total = _safe_int(_first(raw_tags, "tracktotal", "TRACKTOTAL"))
     metadata.disc_number, metadata.disc_total = _split_pair(
         _first(raw_tags, "discnumber", "DISCNUMBER", "disk", "TPOS")
     )
+    if metadata.disc_total is None:
+        metadata.disc_total = _safe_int(_first(raw_tags, "disctotal", "DISCTOTAL"))
     metadata.release_date = _first(raw_tags, "date", "DATE", "\xa9day", "TDRC")
-    metadata.original_date = _first(raw_tags, "originaldate", "ORIGINALDATE", "TDOR")
+    metadata.original_date = _first(
+        raw_tags,
+        "originaldate",
+        "ORIGINALDATE",
+        "TDOR",
+        "----:com.apple.iTunes:ORIGINALDATE",
+    )
     metadata.genre = _multi(raw_tags, "genre", "GENRE", "\xa9gen", "TCON")
     metadata.subgenre = _multi(raw_tags, "style", "STYLE", "SUBGENRE")
     metadata.composer = _multi(raw_tags, "composer", "COMPOSER", "\xa9wrt", "TCOM")
@@ -125,6 +135,45 @@ def read_canonical_metadata(path: str | Path) -> CanonicalTrack:
     return track
 
 
+def read_embedded_cover_art(path: str | Path) -> bytes | None:
+    """Return embedded cover art bytes when the audio container exposes them."""
+    _require_mutagen()
+
+    mutagen_file = MutagenFile(Path(path))
+    if mutagen_file is None:
+        return None
+
+    pictures = getattr(mutagen_file, "pictures", None)
+    if pictures:
+        first_picture = pictures[0]
+        data = getattr(first_picture, "data", None)
+        if isinstance(data, (bytes, bytearray)):
+            return bytes(data)
+
+    tags = getattr(mutagen_file, "tags", None)
+    if tags is None:
+        return None
+
+    if hasattr(tags, "getall"):
+        apic_frames = tags.getall("APIC")
+        if apic_frames:
+            data = getattr(apic_frames[0], "data", None)
+            if isinstance(data, (bytes, bytearray)):
+                return bytes(data)
+
+    try:
+        cover_items = tags.get("covr")
+    except Exception:
+        cover_items = None
+
+    if cover_items:
+        first_cover = cover_items[0]
+        if isinstance(first_cover, (bytes, bytearray)):
+            return bytes(first_cover)
+
+    return None
+
+
 def _require_mutagen() -> None:
     if MutagenFile is None:
         raise RuntimeError("Mutagen is required for tagging features. Install it with `pip install mutagen`.")
@@ -177,8 +226,11 @@ def _extract_custom_tags(raw_tags: dict[str, list[str]]) -> dict[str, Any]:
         "albumartist",
         "album artist",
         "tracknumber",
+        "tracktotal",
         "discnumber",
+        "disctotal",
         "date",
+        "originaldate",
         "genre",
         "composer",
         "comment",
@@ -218,6 +270,7 @@ def _extract_custom_tags(raw_tags: dict[str, list[str]]) -> dict[str, Any]:
         "TALB",
         "TPE2",
         "TDRC",
+        "TDOR",
         "TCON",
         "TCOM",
         "COMM",
@@ -235,6 +288,7 @@ def _extract_custom_tags(raw_tags: dict[str, list[str]]) -> dict[str, Any]:
         "----:com.apple.iTunes:Discogs Release Id",
         "----:com.apple.iTunes:BARCODE",
         "----:com.apple.iTunes:Catalog Number",
+        "----:com.apple.iTunes:ORIGINALDATE",
     }
     return {key: value for key, value in raw_tags.items() if key not in canonical_keys}
 

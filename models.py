@@ -5,12 +5,46 @@ from pathlib import Path
 
 
 @dataclass
+class TrackScanMetadata:
+    """Lightweight metadata captured during a library scan for fast UI display."""
+
+    relative_path: str
+    file_name: str
+    title: str | None = None
+    artist: list[str] = field(default_factory=list)
+    album: str | None = None
+    genre: list[str] = field(default_factory=list)
+    track_number: int | None = None
+    release_date: str | None = None
+
+    @property
+    def display_name(self) -> str:
+        if not self.title:
+            return self.file_name
+
+        prefix = f"{self.track_number:02d} " if self.track_number is not None else ""
+        artist_suffix = f" - {', '.join(self.artist)}" if self.artist else ""
+        return f"{prefix}{self.title}{artist_suffix}"
+
+    @property
+    def tooltip_text(self) -> str:
+        lines = [f"Path: {self.relative_path}"]
+        lines.append(f"Title: {self.title or '(missing)'}")
+        lines.append(f"Artist: {', '.join(self.artist) if self.artist else '(missing)'}")
+        lines.append(f"Album: {self.album or '(missing)'}")
+        lines.append(f"Genre: {', '.join(self.genre) if self.genre else '(missing)'}")
+        lines.append(f"Release date: {self.release_date or '(missing)'}")
+        return "\n".join(lines)
+
+
+@dataclass
 class LibraryAlbum:
     """A scanned folder that contains audio files and acts like one library item."""
 
     folder_path: str
     track_count: int
     tracks: list[str]
+    track_metadata: dict[str, TrackScanMetadata] = field(default_factory=dict)
 
     @property
     def display_name(self) -> str:

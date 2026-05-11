@@ -66,6 +66,7 @@ ID3_TEXT_FRAME_MAP = {
     "album": "TALB",
     "album_artist": "TPE2",
     "release_date": "TDRC",
+    "original_date": "TDOR",
     "genre": "TCON",
     "composer": "TCOM",
     "comment": "COMM",

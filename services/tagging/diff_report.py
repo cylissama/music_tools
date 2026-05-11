@@ -28,6 +28,7 @@ def build_diff_report(
 
     return DiffReport(
         file_path=after.file_path,
+        result_file_path=after.file_path,
         changes=changes,
         review_required=review_required,
         reasons=reasons or [],

@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from services.tagging.audit_store import TaggingAuditStore
 from services.tagging.diff_report import build_diff_report
 from services.tagging.mappings import MP4_FIELD_MAP, VORBIS_FIELD_MAP
+from services.tagging.normalize import normalize_track_tags
 from services.tagging.reader import read_canonical_metadata
-from services.tagging.schema import CanonicalTrack, DiffReport
+from services.tagging.schema import CanonicalTrack, DiffReport, FieldDiff
 
 try:
     from mutagen import File as MutagenFile
     from mutagen.flac import FLAC
-    from mutagen.id3 import COMM, TALB, TBPM, TCOM, TCON, TCOP, TDRC, TIT1, TIT2, TKEY, TMOO, TPE1, TPE2, TPOS, TRCK, TSRC, TXXX
+    from mutagen.id3 import COMM, TALB, TBPM, TCOM, TCON, TCOP, TDRC, TDOR, TIT1, TIT2, TKEY, TMOO, TPE1, TPE2, TPOS, TRCK, TSRC, TXXX
     from mutagen.mp3 import MP3
     from mutagen.mp4 import MP4, MP4FreeForm
     from mutagen.oggopus import OggOpus
@@ -57,8 +60,8 @@ def write_canonical_metadata(
     _write_by_format(mutagen_file, proposed_track)
     mutagen_file.save()
 
-    after = read_canonical_metadata(proposed_track.file_path)
-    verification_diff = build_diff_report(proposed_track, after)
+    after = normalize_track_tags(read_canonical_metadata(proposed_track.file_path))
+    verification_diff = _build_write_verification_diff(proposed_track, after)
     if verification_diff.changes:
         audit_store.record_snapshot(
             file_path=proposed_track.file_path,
@@ -177,6 +180,11 @@ def _write_mp4(mutagen_file, track: CanonicalTrack) -> None:
     )
     _set_mp4_freeform(
         mutagen_file,
+        "----:com.apple.iTunes:ORIGINALDATE",
+        track.metadata.original_date,
+    )
+    _set_mp4_freeform(
+        mutagen_file,
         "----:com.apple.iTunes:MOOD",
         "; ".join(track.content_tags.mood) if track.content_tags.mood else None,
     )
@@ -193,6 +201,7 @@ def _write_mp3(mutagen_file, track: CanonicalTrack) -> None:
     _set_id3_text(tags, TALB, track.metadata.album)
     _set_id3_text(tags, TPE2, track.metadata.album_artist)
     _set_id3_text(tags, TDRC, track.metadata.release_date)
+    _set_id3_text(tags, TDOR, track.metadata.original_date)
     _set_id3_text(tags, TCON, track.metadata.genre)
     _set_id3_text(tags, TCOM, track.metadata.composer)
     _set_id3_text(tags, TIT1, track.metadata.grouping)
@@ -287,6 +296,66 @@ def _canonical_field_values(track: CanonicalTrack) -> dict[str, object]:
         "instruments": track.content_tags.instruments,
         "language": track.content_tags.language,
     }
+
+
+def _build_write_verification_diff(proposed_track: CanonicalTrack, actual_track: CanonicalTrack) -> DiffReport:
+    """Compare only fields that are expected to survive a write/read round-trip."""
+    proposed_fields = _verification_field_values(proposed_track)
+    actual_fields = _verification_field_values(actual_track)
+
+    changes: list[FieldDiff] = []
+    for field_path in sorted(set(proposed_fields) | set(actual_fields)):
+        before_value = proposed_fields.get(field_path)
+        after_value = actual_fields.get(field_path)
+        if before_value != after_value:
+            changes.append(FieldDiff(field_path=field_path, before=before_value, after=after_value))
+
+    return DiffReport(
+        file_path=actual_track.file_path,
+        result_file_path=actual_track.file_path,
+        changes=changes,
+    )
+
+
+def _verification_field_values(track: CanonicalTrack) -> dict[str, Any]:
+    values: dict[str, Any] = {
+        "file_path": track.file_path,
+        "file_format": track.file_format,
+    }
+
+    metadata_field_names = {
+        "title",
+        "artist",
+        "album",
+        "album_artist",
+        "track_number",
+        "track_total",
+        "disc_number",
+        "disc_total",
+        "release_date",
+        "original_date",
+        "genre",
+        "subgenre",
+        "composer",
+        "comment",
+        "grouping",
+        "label",
+        "copyright",
+        "isrc",
+        "musicbrainz_recording_id",
+        "musicbrainz_release_id",
+        "musicbrainz_release_group_id",
+        "musicbrainz_artist_id",
+        "discogs_release_id",
+        "barcode",
+        "catalog_number",
+    }
+
+    for field_name, value in _canonical_field_values(track).items():
+        prefix = "metadata" if field_name in metadata_field_names else "content_tags"
+        values[f"{prefix}.{field_name}"] = value
+
+    return values
 
 
 def _preserve_custom_tags(mutagen_file, track: CanonicalTrack) -> None:

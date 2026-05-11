@@ -136,8 +136,11 @@ class LookupCandidate:
     album: str | None = None
     album_artist: list[str] = field(default_factory=list)
     track_number: int | None = None
+    track_total: int | None = None
     disc_number: int | None = None
+    disc_total: int | None = None
     release_date: str | None = None
+    original_date: str | None = None
     isrc: str | None = None
     musicbrainz_recording_id: str | None = None
     musicbrainz_release_id: str | None = None
@@ -171,6 +174,7 @@ class DiffReport:
     """A report describing what would change and whether review is needed."""
 
     file_path: str
+    result_file_path: str | None = None
     created_at: str = field(default_factory=utc_now_iso)
     changes: list[FieldDiff] = field(default_factory=list)
     review_required: bool = False
@@ -180,6 +184,7 @@ class DiffReport:
     def to_dict(self) -> dict[str, Any]:
         return {
             "file_path": self.file_path,
+            "result_file_path": self.result_file_path,
             "created_at": self.created_at,
             "changes": [change.to_dict() for change in self.changes],
             "review_required": self.review_required,

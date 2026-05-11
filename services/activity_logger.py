@@ -209,6 +209,50 @@ def log_tag_apply_failed(file_path: str, error: Exception) -> None:
     )
 
 
+def log_tag_selection_details_refreshed(selection_type: str, track_count: int, representative_path: str) -> None:
+    log_event(
+        "tag_selection_details_refreshed",
+        selection_type=selection_type,
+        track_count=track_count,
+        representative_path=representative_path,
+    )
+
+
+def log_cover_art_loaded(source: str, source_path: str, album_directory: str) -> None:
+    log_event(
+        "cover_art_loaded",
+        source=source,
+        source_path=source_path,
+        album_directory=album_directory,
+    )
+
+
+def log_cover_art_not_found(album_directory: str, track_paths: list[str]) -> None:
+    log_event(
+        "cover_art_not_found",
+        album_directory=album_directory,
+        track_paths=track_paths,
+    )
+
+
+def log_cover_art_probe_failed(stage: str, album_directory: str, error: Exception) -> None:
+    logger = logging.getLogger(LOGGER_NAME)
+    logger.exception(
+        "cover_art_probe_failed",
+        extra={
+            "event": "cover_art_probe_failed",
+            "details": _sanitize(
+                {
+                    "stage": stage,
+                    "album_directory": album_directory,
+                    "error": str(error),
+                }
+            ),
+            "session_id": get_session_id(),
+        },
+    )
+
+
 def log_playlist_save_failed(
     name: str,
     save_path: Path,

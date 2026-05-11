@@ -79,10 +79,16 @@ def merge_candidate_into_track(track: CanonicalTrack, candidate: LookupCandidate
         metadata.album_artist = list(candidate.album_artist)
     if candidate.track_number is not None:
         metadata.track_number = candidate.track_number
+    if candidate.track_total is not None:
+        metadata.track_total = candidate.track_total
     if candidate.disc_number is not None:
         metadata.disc_number = candidate.disc_number
+    if candidate.disc_total is not None:
+        metadata.disc_total = candidate.disc_total
     if candidate.release_date:
         metadata.release_date = candidate.release_date
+    if candidate.original_date:
+        metadata.original_date = candidate.original_date
     if candidate.isrc:
         metadata.isrc = candidate.isrc
     if candidate.label:
@@ -270,12 +276,25 @@ def _parse_album_folder(folder_name: str) -> dict[str, object]:
     if len(parts) >= 2:
         return {
             "artist": [parts[0]] if parts[0] else [],
-            "album": parts[1] or None,
+            "album": _clean_album_folder_label(parts[1]),
         }
     return {
         "artist": [],
-        "album": folder_name.strip() or None,
+        "album": _clean_album_folder_label(folder_name),
     }
+
+
+def _clean_album_folder_label(value: str) -> str | None:
+    """Strip rename-template suffixes like '(2020) [FLAC]' from folder-derived album guesses."""
+    cleaned = value.strip()
+    if not cleaned:
+        return None
+
+    cleaned = re.sub(r"\s*\(\d{4}\)\s*$", "", cleaned)
+    cleaned = re.sub(r"\s*\[[^\]]+\]\s*$", "", cleaned)
+    cleaned = re.sub(r"\s*\(\d{4}\)\s*\[[^\]]+\]\s*$", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" -")
+    return cleaned or None
 
 
 def _infer_artist_from_path(path_parts: list[str]) -> list[str]:

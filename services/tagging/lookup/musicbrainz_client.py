@@ -43,7 +43,9 @@ class MusicBrainzLookupClient:
         for release in release_list[:5]:
             medium_list = release.get("medium-list", [])
             track_number = None
+            track_total = None
             disc_number = None
+            disc_total = _safe_int(release.get("medium-count")) or (len(medium_list) if medium_list else None)
             if medium_list:
                 disc_number = _safe_int(medium_list[0].get("position"))
                 for medium in medium_list:
@@ -52,6 +54,7 @@ class MusicBrainzLookupClient:
                         if recording_ref == recording.get("id"):
                             track_number = _safe_int(track.get("position") or track.get("number"))
                             disc_number = _safe_int(medium.get("position")) or disc_number
+                            track_total = _safe_int(medium.get("track-count")) or track_total
                             break
                     if track_number is not None:
                         break
@@ -64,8 +67,11 @@ class MusicBrainzLookupClient:
                     album=release.get("title"),
                     album_artist=[credit.get("artist", {}).get("name", "") for credit in artist_credit if isinstance(credit, dict)],
                     track_number=track_number,
+                    track_total=track_total,
                     disc_number=disc_number,
+                    disc_total=disc_total,
                     release_date=release.get("date"),
+                    original_date=release.get("release-group", {}).get("first-release-date"),
                     musicbrainz_recording_id=recording.get("id"),
                     musicbrainz_release_id=release.get("id"),
                     musicbrainz_release_group_id=release.get("release-group", {}).get("id"),
@@ -96,16 +102,20 @@ class MusicBrainzLookupClient:
         for recording in result.get("recording-list", []):
             artist_credit = recording.get("artist-credit", [])
             release_list = recording.get("release-list", [])
+            first_release = release_list[0] if release_list else {}
             candidates.append(
                 LookupCandidate(
                     source="musicbrainz_search",
                     title=recording.get("title"),
                     artist=[credit.get("artist", {}).get("name", "") for credit in artist_credit if isinstance(credit, dict)],
-                    album=release_list[0].get("title") if release_list else None,
+                    album=first_release.get("title"),
                     album_artist=[credit.get("artist", {}).get("name", "") for credit in artist_credit if isinstance(credit, dict)],
-                    release_date=release_list[0].get("date") if release_list else None,
+                    disc_total=_safe_int(first_release.get("medium-count")),
+                    release_date=first_release.get("date"),
+                    original_date=first_release.get("release-group", {}).get("first-release-date"),
                     musicbrainz_recording_id=recording.get("id"),
-                    musicbrainz_release_id=release_list[0].get("id") if release_list else None,
+                    musicbrainz_release_id=first_release.get("id"),
+                    musicbrainz_release_group_id=first_release.get("release-group", {}).get("id"),
                     confidence=0.6,
                     details={"source": "musicbrainz_search"},
                 )

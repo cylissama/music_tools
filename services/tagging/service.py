@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from services.app_settings import RenameConfig
 from services.tagging.audit_store import TaggingAuditStore
 from services.tagging.conflict_resolution import (
     choose_best_candidate,
@@ -19,8 +20,13 @@ from services.tagging.lookup.discogs_client import DiscogsLookupClient
 from services.tagging.lookup.musicbrainz_client import MusicBrainzLookupClient
 from services.tagging.normalize import normalize_track_tags
 from services.tagging.reader import read_canonical_metadata
+from services.tagging.renamer import (
+    RenamePlan,
+    apply_track_rename_with_context,
+    plan_track_rename_with_context,
+)
 from services.tagging.review_queue import ReviewQueueService
-from services.tagging.schema import CanonicalTrack, DiffReport, LookupCandidate
+from services.tagging.schema import CanonicalTrack, DiffReport, FieldDiff, LookupCandidate
 from services.tagging.writer import write_canonical_metadata
 
 
@@ -46,6 +52,10 @@ class TaggingService:
     def propose_tags(self, file_path: str | Path) -> tuple[CanonicalTrack, DiffReport, list[LookupCandidate]]:
         """Build a safe proposal by combining embedded tags, filename clues, and lookups."""
         track = self.read_track(file_path)
+        return self.propose_tags_for_track(track)
+
+    def propose_tags_for_track(self, track: CanonicalTrack) -> tuple[CanonicalTrack, DiffReport, list[LookupCandidate]]:
+        """Build a safe proposal for an already-read canonical track."""
         context = parse_filename_context(track.file_path)
         candidates = self._collect_candidates(track, context)
         best_candidate, score = choose_best_candidate(candidates, track, context)
@@ -87,15 +97,21 @@ class TaggingService:
         preview_report: DiffReport | None = None,
         confirmed: bool = False,
         source: str = "tagging_service",
+        rename_config: RenameConfig | None = None,
+        album_tracks: list[CanonicalTrack] | None = None,
     ) -> DiffReport:
         """Write a previously previewed proposal only after explicit confirmation."""
         self._validate_preview_confirmation(proposed_track, preview_report, confirmed)
-        return write_canonical_metadata(
+        applied_report = write_canonical_metadata(
             proposed_track,
             audit_store=self.audit_store,
             source=source,
             dry_run=False,
         )
+        if rename_config is not None and rename_config.enabled:
+            rename_plan = apply_track_rename_with_context(proposed_track, rename_config, album_tracks)
+            self._attach_rename_result(applied_report, rename_plan)
+        return applied_report
 
     def dry_run(self, proposed_track: CanonicalTrack, *, source: str = "tagging_service") -> DiffReport:
         """Create and persist a dry-run report without modifying the file."""
@@ -110,6 +126,15 @@ class TaggingService:
         """Read a set of files and report album-level inconsistencies."""
         tracks = [self.read_track(file_path) for file_path in file_paths]
         return validate_album_consistency(tracks)
+
+    def preview_rename(
+        self,
+        proposed_track: CanonicalTrack,
+        rename_config: RenameConfig,
+        album_tracks: list[CanonicalTrack] | None = None,
+    ) -> RenamePlan:
+        """Build a dry-run rename plan for a tagged track."""
+        return plan_track_rename_with_context(proposed_track, rename_config, album_tracks)
 
     def _collect_candidates(
         self,
@@ -197,3 +222,18 @@ class TaggingService:
 
         if not confirmed:
             raise ValueError("Tag application requires explicit confirmation after preview.")
+
+    @staticmethod
+    def _attach_rename_result(diff_report: DiffReport, rename_plan: RenamePlan) -> None:
+        if not rename_plan.rename_required:
+            diff_report.result_file_path = rename_plan.source_path
+            return
+
+        diff_report.changes.append(
+            FieldDiff(
+                field_path="file_path",
+                before=rename_plan.source_path,
+                after=rename_plan.target_path,
+            )
+        )
+        diff_report.result_file_path = rename_plan.target_path
